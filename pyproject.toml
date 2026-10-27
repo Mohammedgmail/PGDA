@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pgda"
+version = "0.1.0"
+description = "Physically-Grounded Diffusion Augmentation: Coupling diffusion-generated material textures to physical parameters for sim-to-real robotic manipulation"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Mohammed Alfandi", email = "m.alfandi2@newcastle.ac.uk" }]
+requires-python = ">=3.10"
+dependencies = [
+    "gymnasium>=0.29",
+    "numpy>=1.23",
+    "pybullet>=3.2",
+    "stable-baselines3>=2.0",
+    "torch>=2.0",
+    "torchvision>=0.15",
+    "wandb>=0.16",
+    "pillow>=9.0",
+    "pyyaml>=6",
+]
+keywords = [
+    "robotics",
+    "reinforcement-learning",
+    "domain-randomisation",
+    "sim-to-real",
+    "diffusion-models",
+    "material-perception",
+    "robotic-manipulation",
+    "planar-pushing",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7",
+    "ruff==0.16.8",
+    "matplotlib>=3.6",
+    "optuna>=3.0",
+]
+train = [
+    "wandb>=0.16",
+    "optuna>=3.0",
+]
+eval = [
+    "matplotlib>=3.6",
+    "seaborn>=0.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/Mohammedgmail/PGDA"
+Repository = "https://github.com/Mohammedgmail/PGDA"
+Paper = "https://doi.org/..."  # Add DOI when published
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::FutureWarning",
+    "ignore::UserWarning",
+]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "NPY"]
+ignore = ["E501"]  # Line too long - allow for readability in scientific code
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"

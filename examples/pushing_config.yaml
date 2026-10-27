@@ -1,0 +1,48 @@
+# Example configuration for PGDA planar pushing experiment
+# This demonstrates the three material categories and their physics bounds
+
+environment:
+  randomization_mode: "experimental"  # 'baseline', 'experimental', 'oracle', 'no_dr', 'coupled_no_cue', 'mismatched', 'no_texture'
+  max_episode_steps: 200
+  success_threshold: 0.05  # metres
+
+materials:
+  Heavy_Rust:
+    mass_range: [2.0, 3.0]          # kg
+    lateral_friction_range: [0.8, 1.0]
+    izz_scale: 0.15
+    description: "Low rotational inertia - spins easily if pushed off-centre"
+  
+  Wet_Ice:
+    mass_range: [0.5, 1.5]          # kg
+    lateral_friction_range: [0.01, 0.05]
+    izz_scale: 4.0
+    description: "High rotational inertia - translates cleanly"
+  
+  Coarse_Sandpaper:
+    mass_range: [1.0, 2.0]          # kg
+    lateral_friction_range: [1.0, 1.5]
+    izz_scale: 1.0
+    description: "Neutral, intermediate behaviour"
+
+encoder:
+  model_path: "texture_encoder.pt"
+  input_size: [64, 64]
+  categories: ["Heavy_Rust", "Wet_Ice", "Coarse_Sandpaper"]
+
+training:
+  algorithm: "SAC+HER"
+  total_timesteps: 1_000_000
+  buffer_size: 1_000_000
+  batch_size: 256
+  learning_rate: 1e-3
+  gamma: 0.95
+  tau: 0.005
+  ent_coef: 0.1
+  n_sampled_goal: 4
+  learning_starts: 1000
+  checkpoint_every: 50000
+
+evaluation:
+  num_episodes: 100
+  seeds: [42, 123, 456, 789, 1011]

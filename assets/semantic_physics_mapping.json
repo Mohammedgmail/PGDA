@@ -1,0 +1,32 @@
+{
+    "Heavy Rust": {
+        "mass": [
+            2.0,
+            3.0
+        ],
+        "lateral_friction": [
+            0.8,
+            1.0
+        ]
+    },
+    "Wet Ice": {
+        "mass": [
+            0.5,
+            1.5
+        ],
+        "lateral_friction": [
+            0.01,
+            0.05
+        ]
+    },
+    "Coarse Sandpaper": {
+        "mass": [
+            1.0,
+            2.0
+        ],
+        "lateral_friction": [
+            1.0,
+            1.5
+        ]
+    }
+}
