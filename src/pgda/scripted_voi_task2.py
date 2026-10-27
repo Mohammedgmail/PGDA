@@ -52,55 +52,72 @@
 #      runs use the same episodes (the quick run is the first 120 of the full).
 #   Upload task2_voi_results.json.
 
-import os
-import sys
-import json
-import time
-import random
 import itertools
+import json
 import multiprocessing as mp
+import os
+import random
+import sys
+import time
 
 import numpy as np
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-DRY_RUN       = False
-QUICK         = False         # True: first 120 episodes only
-ANALYSE_ONLY  = False          # True: skip simulation, re-analyse the JSON
+DRY_RUN = False
+QUICK = False  # True: first 120 episodes only
+ANALYSE_ONLY = False  # True: skip simulation, re-analyse the JSON
 
-N_EPISODES       = 960         # natural material mix: about 300 per material
+N_EPISODES = 960  # natural material mix: about 300 per material
 N_EPISODES_QUICK = 120
-PILOT_SEED_BASE  = 2_000_000   # disjoint from evaluation seeds 10000+1000*s+k
-MODE             = "coupled_no_cue"
-N_WORKERS        = max(1, (os.cpu_count() or 2) - 1)
-RESULTS_FILE     = "task2_voi_results.json"
-ENV_CONFIG       = {}          # task2_config overrides; leave empty for the gate
+PILOT_SEED_BASE = 2_000_000  # disjoint from evaluation seeds 10000+1000*s+k
+MODE = "coupled_no_cue"
+N_WORKERS = max(1, (os.cpu_count() or 2) - 1)
+RESULTS_FILE = "task2_voi_results.json"
+ENV_CONFIG = {}  # task2_config overrides; leave empty for the gate
 
-V_GRID   = [0.05, 0.08, 0.12, 0.16, 0.20, 0.30, 0.45, 0.60]   # commanded m/s
-N_MAX    = 6                   # push steps n = 1..N_MAX  (K up to N_MAX-1)
-PROBE_V  = [0.08, 0.16]        # probe strike speeds, m/s
-GAP      = 0.015               # pre-push gap between pusher and object, m
-GUARD    = 40                  # max steps to reach contact during a push
+V_GRID = [0.05, 0.08, 0.12, 0.16, 0.20, 0.30, 0.45, 0.60]  # commanded m/s
+N_MAX = 6  # push steps n = 1..N_MAX  (K up to N_MAX-1)
+PROBE_V = [0.08, 0.16]  # probe strike speeds, m/s
+GAP = 0.015  # pre-push gap between pusher and object, m
+GUARD = 40  # max steps to reach contact during a push
 
-D_GRID   = [round(0.04 + 0.01 * i, 2) for i in range(21)]        # 4..24 cm
-BANDS    = [(0.06, 0.10), (0.08, 0.12), (0.10, 0.14), (0.12, 0.16),
-            (0.14, 0.18), (0.16, 0.20), (0.18, 0.22), (0.20, 0.24),
-            (0.08, 0.15), (0.10, 0.20)]
-DELTAS   = [0.03, 0.04, 0.05]
+D_GRID = [round(0.04 + 0.01 * i, 2) for i in range(21)]  # 4..24 cm
+BANDS = [
+    (0.06, 0.10),
+    (0.08, 0.12),
+    (0.10, 0.14),
+    (0.12, 0.16),
+    (0.14, 0.18),
+    (0.16, 0.20),
+    (0.18, 0.22),
+    (0.20, 0.24),
+    (0.08, 0.15),
+    (0.10, 0.20),
+]
+DELTAS = [0.03, 0.04, 0.05]
 K_VALUES = list(range(N_MAX))
-SPLIT_Q  = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+SPLIT_Q = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
-GATE_GAP_PP      = 15.0
+GATE_GAP_PP = 15.0
 GATE_MIN_CAT_PCT = 60.0
-REFERENCE_DESIGN = {"K": 3, "band": (0.08, 0.15), "delta": 0.05}   # brief's start
-N_BOOT           = 200
+REFERENCE_DESIGN = {"K": 3, "band": (0.08, 0.15), "delta": 0.05}  # brief's start
+N_BOOT = 200
 
 CATEGORIES = ["Heavy Rust", "Wet Ice", "Coarse Sandpaper"]
-STOP_BEYOND = max(D_GRID) + max(DELTAS) + 0.05   # overshoot beyond any goal: stop early
-BIG_WINDOW = 10 ** 6
+STOP_BEYOND = max(D_GRID) + max(DELTAS) + 0.05  # overshoot beyond any goal: stop early
+BIG_WINDOW = 10**6
 
-CONFIG = {"mode": MODE, "seed_base": PILOT_SEED_BASE, "v_grid": V_GRID, "n_max": N_MAX,
-          "probe_v": PROBE_V, "gap": GAP, "env_config": ENV_CONFIG,
-          "rollouts": "seeded_replay", "approach": "closest_point_gap"}
+CONFIG = {
+    "mode": MODE,
+    "seed_base": PILOT_SEED_BASE,
+    "v_grid": V_GRID,
+    "n_max": N_MAX,
+    "probe_v": PROBE_V,
+    "gap": GAP,
+    "env_config": ENV_CONFIG,
+    "rollouts": "seeded_replay",
+    "approach": "closest_point_gap",
+}
 
 
 def key(*parts):
@@ -114,11 +131,16 @@ _ENV = None
 def _init_worker(mode, env_config):
     global _ENV
     import contextlib
+
     with open(os.devnull, "w") as dn, contextlib.redirect_stdout(dn):
-        from pushing_env_task2 import UR3ePushingTask2Env
-        _ENV = UR3ePushingTask2Env(render_mode=None, randomization_mode=mode,
-                                   reward_weights={"success_threshold": 0.05},
-                                   task2_config=env_config)
+        from pgda.env_task2 import UR3ePushingTask2Env
+
+        _ENV = UR3ePushingTask2Env(
+            render_mode=None,
+            randomization_mode=mode,
+            reward_weights={"success_threshold": 0.05},
+            task2_config=env_config,
+        )
 
 
 def _pack(env, info):
@@ -126,14 +148,20 @@ def _pack(env, info):
     pos, _ = env._obj_pose()
     rel = pos[:2] - env._obj_start[:2]
     u = env._u_goal
-    s, l = float(rel @ u), float(rel @ np.array([-u[1], u[0]]))
+    s, lat = float(rel @ u), float(rel @ np.array([-u[1], u[0]]))
     flags = int(info["at_rest"] > 0.5) | (int(info["early_exit"] > 0.5) << 1)
-    return [round(s, 5), round(l, 5), flags, round(info["coast_time"], 3),
-            round(info["peak_speed"], 4)]
+    return [
+        round(s, 5),
+        round(lat, 5),
+        flags,
+        round(info["coast_time"], 3),
+        round(info["peak_speed"], 4),
+    ]
 
 
 def _push_until_onset(env, a):
-    from pushing_env_task2 import APPROACH, PUSH
+    from pgda.env_task2 import APPROACH, PUSH
+
     n0 = env._n_steps
     while env._phase == APPROACH and env._n_steps - n0 < GUARD:
         env.step(a)
@@ -154,20 +182,31 @@ def _fresh(env, seed):
 def _onset_feature(env):
     lin, _ = env._obj_vel()
     pos, _ = env._obj_pose()
-    return [round(float(np.hypot(lin[0], lin[1])), 5),
-            round(float((pos[:2] - env._obj_start[:2]) @ env._u_goal), 5)]
+    return [
+        round(float(np.hypot(lin[0], lin[1])), 5),
+        round(float((pos[:2] - env._obj_start[:2]) @ env._u_goal), 5),
+    ]
 
 
 def run_episode(k):
-    from pushing_env_task2 import scripted_approach, push_action, CONTROL_DT, APPROACH
+    from pgda.env_task2 import APPROACH, CONTROL_DT, push_action, scripted_approach
+
     env = _ENV
     t0 = time.time()
     seed = PILOT_SEED_BASE + k
     _fresh(env, seed)
     rec = env.episode_record()
-    out = {"k": k, "seed": seed, "category": rec["category"], "object": rec["object"],
-           "mass": rec["mass"], "mu": rec["mu"], "izz_scale": rec["izz_scale"],
-           "goal_theta_deg": rec["goal_theta_deg"], "start": rec["start"]}
+    out = {
+        "k": k,
+        "seed": seed,
+        "category": rec["category"],
+        "object": rec["object"],
+        "mass": rec["mass"],
+        "mu": rec["mu"],
+        "izz_scale": rec["izz_scale"],
+        "goal_theta_deg": rec["goal_theta_deg"],
+        "start": rec["start"],
+    }
     appr = scripted_approach(env, gap=GAP)
     actions = appr.pop("actions")
     out["approach"] = appr
@@ -188,8 +227,10 @@ def run_episode(k):
         for act in actions:
             env.step(np.asarray(act))
         if env._phase != APPROACH or not np.array_equal(env._ee_actual(), ee_ref):
-            raise ReplayError(f"episode {k}: the seeded replay did not reproduce the approach "
-                              f"exactly; results would not be exact (see self-test [H])")
+            raise ReplayError(
+                f"episode {k}: the seeded replay did not reproduce the approach "
+                f"exactly; results would not be exact (see self-test [H])"
+            )
 
     def check_feature(v, f):
         if feature.setdefault(key(v), f) != f:
@@ -202,7 +243,7 @@ def run_episode(k):
         for n in range(1, N_MAX + 1):
             prepare()
             if not _push_until_onset(env, a):
-                break                              # never touched the object at this v
+                break  # never touched the object at this v
             check_feature(v, _onset_feature(env))
             disp = []
             for _ in range(n - 1):
@@ -234,9 +275,17 @@ def run_episode(k):
                 env.step(a2)
             *_, info = env.finish_window(stop_beyond=STOP_BEYOND)
             probe[pk] = _pack(env, info)
-    out.update({"valid": True, "direct": direct, "ee_speed": ee_speed, "probe": probe,
-                "feature": feature, "rollouts": state["rollouts"],
-                "t_sec": round(time.time() - t0, 2)})
+    out.update(
+        {
+            "valid": True,
+            "direct": direct,
+            "ee_speed": ee_speed,
+            "probe": probe,
+            "feature": feature,
+            "rollouts": state["rollouts"],
+            "t_sec": round(time.time() - t0, 2),
+        }
+    )
     return out
 
 
@@ -246,8 +295,9 @@ def run_episode(k):
 # step, so under window K an option is allowed if j <= K. The cue-holder
 # (S_cat, S_oracle) may use every option, like the probing no-cue policy.
 PROBE_OPTS = [("stop", 0)] + [(v2, j) for v2 in V_GRID for j in range(1, N_MAX)]
-OPTIONS = ([("direct", None, v, n - 1) for v in V_GRID for n in range(1, N_MAX + 1)]
-           + [("probe", ap, v2, j) for ap in PROBE_V for (v2, j) in PROBE_OPTS])
+OPTIONS = [("direct", None, v, n - 1) for v in V_GRID for n in range(1, N_MAX + 1)] + [
+    ("probe", ap, v2, j) for ap in PROBE_V for (v2, j) in PROBE_OPTS
+]
 OPT_J = np.array([o[3] for o in OPTIONS])
 OPT_DIRECT = np.array([o[0] == "direct" for o in OPTIONS])
 OPT_PROBE = [np.array([o[0] == "probe" and o[1] == ap for o in OPTIONS]) for ap in PROBE_V]
@@ -269,13 +319,12 @@ def _option_key(o):
 
 class Data:
     def __init__(self, res):
-        eps = sorted([e for e in res["episodes"].values() if e.get("valid")],
-                     key=lambda e: e["k"])
+        eps = sorted([e for e in res["episodes"].values() if e.get("valid")], key=lambda e: e["k"])
         self.eps = eps
-        E, O = len(eps), len(OPTIONS)
+        E, n_opt = len(eps), len(OPTIONS)
         self.cat = np.array([e["category"] for e in eps])
-        self.S, self.L = np.full((E, O), np.nan), np.full((E, O), np.nan)
-        self.OK = np.zeros((E, O), bool)
+        self.S, self.L = np.full((E, n_opt), np.nan), np.full((E, n_opt), np.nan)
+        self.OK = np.zeros((E, n_opt), bool)
         self.F = np.full((E, len(PROBE_V)), np.nan)
         for ei, e in enumerate(eps):
             for oi, o in enumerate(OPTIONS):
@@ -294,7 +343,7 @@ class Data:
         k = (delta, D)
         if k not in self._cache:
             with np.errstate(invalid="ignore"):
-                self._cache[k] = self.OK & (((self.S - D) ** 2 + self.L ** 2) < delta ** 2)
+                self._cache[k] = self.OK & (((self.S - D) ** 2 + self.L**2) < delta**2)
         return self._cache[k]
 
 
@@ -317,9 +366,9 @@ def _probe_value(F, P):
 
     def seg(a, b):
         return (cum[b] - cum[a]).max()
-    best = seg(0, len(fs))                                     # one bin
-    cuts = sorted(set(int(np.searchsorted(fs, q, side="right"))
-                      for q in np.quantile(f, SPLIT_Q)))
+
+    best = seg(0, len(fs))  # one bin
+    cuts = sorted(set(int(np.searchsorted(fs, q, side="right")) for q in np.quantile(f, SPLIT_Q)))
     cuts = [c for c in cuts if 0 < c < len(fs)]
     for c in cuts:
         best = max(best, seg(0, c) + seg(c, len(fs)))
@@ -335,8 +384,13 @@ def design_metrics(data, delta, K, band, ix=None):
     cat = data.cat[ix]
     allowed = OPT_J <= K
     Ds = [D for D in D_GRID if band[0] - 1e-9 <= D <= band[1] + 1e-9]
-    acc = {"single": [], "probe": [], "cat": [], "oracle": [],
-           **{f"cat_{c}": [] for c in CATEGORIES}}
+    acc = {
+        "single": [],
+        "probe": [],
+        "cat": [],
+        "oracle": [],
+        **{f"cat_{c}": [] for c in CATEGORIES},
+    }
     p_c = {c: float(np.mean(cat == c)) for c in CATEGORIES}
     for D in Ds:
         s = data.succ(delta, D)[ix]
@@ -350,8 +404,12 @@ def design_metrics(data, delta, K, band, ix=None):
             acc[f"cat_{c}"].append(v)
             sc += p_c[c] * v
         acc["cat"].append(sc)
-        acc["probe"].append(max(_probe_value(data.F[ix, ai], s[:, allowed & OPT_PROBE[ai]])
-                                for ai in range(len(PROBE_V))))
+        acc["probe"].append(
+            max(
+                _probe_value(data.F[ix, ai], s[:, allowed & OPT_PROBE[ai]])
+                for ai in range(len(PROBE_V))
+            )
+        )
     out = {k: 100 * float(np.mean(v)) for k, v in acc.items()}
     out["gap"] = out["cat"] - max(out["single"], out["probe"])
     out["min_cat"] = min(out[f"cat_{c}"] for c in CATEGORIES)
@@ -388,12 +446,23 @@ def analyse(res):
     passing = [d for d in designs if d["passes"]]
     passing.sort(key=lambda d: (-d["score"], d["delta"] != 0.05, d["K"]))
     chosen = passing[0] if passing else None
-    ref = next(d for d in designs if d["K"] == REFERENCE_DESIGN["K"]
-               and tuple(d["band"]) == REFERENCE_DESIGN["band"]
-               and d["delta"] == REFERENCE_DESIGN["delta"])
-    out = {"n_episodes": n_all, "n_valid": E, "counts": counts, "designs": designs,
-           "n_passing": len(passing), "chosen": chosen, "reference": ref}
-    for name, dsg in (("chosen", chosen), ("reference", ref)):
+    ref = next(
+        d
+        for d in designs
+        if d["K"] == REFERENCE_DESIGN["K"]
+        and tuple(d["band"]) == REFERENCE_DESIGN["band"]
+        and d["delta"] == REFERENCE_DESIGN["delta"]
+    )
+    out = {
+        "n_episodes": n_all,
+        "n_valid": E,
+        "counts": counts,
+        "designs": designs,
+        "n_passing": len(passing),
+        "chosen": chosen,
+        "reference": ref,
+    }
+    for _name, dsg in (("chosen", chosen), ("reference", ref)):
         if dsg is None:
             continue
         M, best = cross_matrix(data, dsg["delta"], dsg["K"], tuple(dsg["band"]))
@@ -403,69 +472,109 @@ def analyse(res):
         gaps = []
         for _ in range(N_BOOT):
             ix = rng.integers(0, E, E)
-            gaps.append(design_metrics(data, chosen["delta"], chosen["K"],
-                                       tuple(chosen["band"]), ix)["gap"])
-        chosen["gap_boot_ci95"] = [float(np.percentile(gaps, 2.5)),
-                                   float(np.percentile(gaps, 97.5))]
+            gaps.append(
+                design_metrics(data, chosen["delta"], chosen["K"], tuple(chosen["band"]), ix)["gap"]
+            )
+        chosen["gap_boot_ci95"] = [
+            float(np.percentile(gaps, 2.5)),
+            float(np.percentile(gaps, 97.5)),
+        ]
     # Achieved pusher speed and post-window object speed per commanded v
     spd = {}
     for v in V_GRID:
         ee = [e["ee_speed"].get(key(v)) for e in data.eps if e["ee_speed"].get(key(v)) is not None]
-        pk = {c: [e["direct"][key(v, N_MAX)][4] for e in data.eps
-                  if e["category"] == c and key(v, N_MAX) in e["direct"]] for c in CATEGORIES}
-        spd[key(v)] = {"ee_speed_median": float(np.median(ee)) if ee else None,
-                       **{f"peak_obj_speed_{c}": float(np.median(x)) if x else None
-                          for c, x in pk.items()}}
+        pk = {
+            c: [
+                e["direct"][key(v, N_MAX)][4]
+                for e in data.eps
+                if e["category"] == c and key(v, N_MAX) in e["direct"]
+            ]
+            for c in CATEGORIES
+        }
+        spd[key(v)] = {
+            "ee_speed_median": float(np.median(ee)) if ee else None,
+            **{f"peak_obj_speed_{c}": float(np.median(x)) if x else None for c, x in pk.items()},
+        }
     out["speeds"] = spd
     out["approach_failures"] = n_all - E
-    out["early_exit_rate"] = float(np.mean([(r[2] & 2) > 0 for e in data.eps
-                                            for r in e["direct"].values()])) if E else None
+    out["early_exit_rate"] = (
+        float(np.mean([(r[2] & 2) > 0 for e in data.eps for r in e["direct"].values()]))
+        if E
+        else None
+    )
     return out
 
 
 def print_summary(a):
-    print(f"\n{'#'*96}\n  TASK-2 SCRIPTED VALUE OF INFORMATION  ({a['n_valid']} valid of "
-          f"{a['n_episodes']} episodes; {a['counts']})\n{'#'*96}")
-    print("\n  Commanded push speed -> achieved pusher speed and object peak speed after the window (medians, m/s)")
+    print(
+        f"\n{'#' * 96}\n  TASK-2 SCRIPTED VALUE OF INFORMATION  ({a['n_valid']} valid of "
+        f"{a['n_episodes']} episodes; {a['counts']})\n{'#' * 96}"
+    )
+    print(
+        "\n  Commanded push speed -> achieved pusher speed and object peak speed after the window (medians, m/s)"
+    )
     for v, s in a["speeds"].items():
-        print(f"    v = {v} : pusher {s['ee_speed_median'] or float('nan'):.3f}  | object "
-              + "  ".join(f"{c.split()[-1]} {s[f'peak_obj_speed_{c}'] or float('nan'):.3f}" for c in CATEGORIES))
-    hdr = (f"\n  {'K':>2} {'band (cm)':>11} {'delta':>5} | {'single':>6} {'probe':>6} {'cat':>6} "
-           f"{'oracle':>6} | {'Rust':>5} {'Ice':>5} {'Sand':>5} | {'gap':>6}  pass")
+        print(
+            f"    v = {v} : pusher {s['ee_speed_median'] or float('nan'):.3f}  | object "
+            + "  ".join(
+                f"{c.split()[-1]} {s[f'peak_obj_speed_{c}'] or float('nan'):.3f}"
+                for c in CATEGORIES
+            )
+        )
+    hdr = (
+        f"\n  {'K':>2} {'band (cm)':>11} {'delta':>5} | {'single':>6} {'probe':>6} {'cat':>6} "
+        f"{'oracle':>6} | {'Rust':>5} {'Ice':>5} {'Sand':>5} | {'gap':>6}  pass"
+    )
 
     def row(d):
-        return (f"  {d['K']:2d} {d['band'][0]*100:5.0f}-{d['band'][1]*100:<5.0f} {d['delta']*100:5.0f} | "
-                f"{d['single']:6.1f} {d['probe']:6.1f} {d['cat']:6.1f} {d['oracle']:6.1f} | "
-                + " ".join(f"{d[f'cat_{c}']:5.1f}" for c in CATEGORIES)
-                + f" | {d['gap']:+6.1f}  {'PASS' if d['passes'] else '-'}")
-    print(f"\n  Reference design (brief): K={REFERENCE_DESIGN['K']}, D {REFERENCE_DESIGN['band']}, "
-          f"delta {REFERENCE_DESIGN['delta']}" + hdr)
+        return (
+            f"  {d['K']:2d} {d['band'][0] * 100:5.0f}-{d['band'][1] * 100:<5.0f} {d['delta'] * 100:5.0f} | "
+            f"{d['single']:6.1f} {d['probe']:6.1f} {d['cat']:6.1f} {d['oracle']:6.1f} | "
+            + " ".join(f"{d[f'cat_{c}']:5.1f}" for c in CATEGORIES)
+            + f" | {d['gap']:+6.1f}  {'PASS' if d['passes'] else '-'}"
+        )
+
+    print(
+        f"\n  Reference design (brief): K={REFERENCE_DESIGN['K']}, D {REFERENCE_DESIGN['band']}, "
+        f"delta {REFERENCE_DESIGN['delta']}" + hdr
+    )
     print(row(a["reference"]))
     top = sorted(a["designs"], key=lambda d: -d["score"])[:12]
-    print(f"\n  Designs closest to the gate (sorted by worst-case margin; "
-          f"{a['n_passing']} of {len(a['designs'])} pass)" + hdr)
+    print(
+        f"\n  Designs closest to the gate (sorted by worst-case margin; "
+        f"{a['n_passing']} of {len(a['designs'])} pass)" + hdr
+    )
     for d in top:
         print(row(d))
     c = a["chosen"]
     if c is None:
-        print("\n  NO DESIGN PASSES THE GATE. Do not train PGDA on Design A; see the reply for the fallback.")
+        print(
+            "\n  NO DESIGN PASSES THE GATE. Do not train PGDA on Design A; see the reply for the fallback."
+        )
     else:
-        print(f"\n  CHOSEN (pre-registered rule): K = {c['K']}, D = {c['band'][0]*100:.0f}-{c['band'][1]*100:.0f} cm, "
-              f"delta = {c['delta']*100:.0f} cm")
-        print(f"    gap {c['gap']:+.1f} pp, bootstrap 95% CI [{c['gap_boot_ci95'][0]:+.1f}, {c['gap_boot_ci95'][1]:+.1f}]")
+        print(
+            f"\n  CHOSEN (pre-registered rule): K = {c['K']}, D = {c['band'][0] * 100:.0f}-{c['band'][1] * 100:.0f} cm, "
+            f"delta = {c['delta'] * 100:.0f} cm"
+        )
+        print(
+            f"    gap {c['gap']:+.1f} pp, bootstrap 95% CI [{c['gap_boot_ci95'][0]:+.1f}, {c['gap_boot_ci95'][1]:+.1f}]"
+        )
         print("    strategy best for row material, applied to column material (success %):")
         print("      " + " " * 18 + "".join(f"{x:>18s}" for x in CATEGORIES))
-        for r, vals in zip(CATEGORIES, c["cross_matrix"]):
+        for r, vals in zip(CATEGORIES, c["cross_matrix"], strict=False):
             print(f"      {r:18s}" + "".join(f"{v:18.1f}" for v in vals))
         print("    best strategy per material at the band's middle distance:")
         for r in CATEGORIES:
             lst = c["best_strategy_per_D"][r]
             print(f"      {r:18s} {lst[len(lst) // 2]}")
-    print(f"\n  Approach failures: {a['approach_failures']}; early-exit rate (far overshoots): "
-          f"{a['early_exit_rate']*100 if a['early_exit_rate'] is not None else float('nan'):.1f}%")
+    print(
+        f"\n  Approach failures: {a['approach_failures']}; early-exit rate (far overshoots): "
+        f"{a['early_exit_rate'] * 100 if a['early_exit_rate'] is not None else float('nan'):.1f}%"
+    )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
 
 def load_results():
     if os.path.exists(RESULTS_FILE):
@@ -483,8 +592,10 @@ def save_results(res):
 
 if __name__ == "__main__":
     n_target = N_EPISODES_QUICK if QUICK else N_EPISODES
-    print(f"{'='*96}\n  Task-2 scripted VoI | DRY_RUN={DRY_RUN} QUICK={QUICK} | {n_target} episodes | "
-          f"{N_WORKERS} workers\n{'='*96}")
+    print(
+        f"{'=' * 96}\n  Task-2 scripted VoI | DRY_RUN={DRY_RUN} QUICK={QUICK} | {n_target} episodes | "
+        f"{N_WORKERS} workers\n{'=' * 96}"
+    )
     res = load_results()
     if ANALYSE_ONLY:
         a = analyse(res)
@@ -494,8 +605,10 @@ if __name__ == "__main__":
         sys.exit(0)
 
     if res.get("config") != json.loads(json.dumps(CONFIG)) and res["episodes"]:
-        raise SystemExit(f"{RESULTS_FILE} was made with a different configuration; "
-                         f"rename it or restore the old settings.")
+        raise SystemExit(
+            f"{RESULTS_FILE} was made with a different configuration; "
+            f"rename it or restore the old settings."
+        )
 
     # Check the env and time one episode in this process
     _init_worker(MODE, ENV_CONFIG)
@@ -503,16 +616,24 @@ if __name__ == "__main__":
     first = run_episode(0)
     dt = time.time() - t0
     ap = first["approach"]
-    print(f"  env mode '{MODE}': OK | episode 0: {first['category']}, valid={first['valid']}, "
-          f"{dt:.1f} s for {first.get('rollouts', 0)} rollouts")
-    print(f"  approach: {ap.get('steps')} steps, gap {ap.get('gap', float('nan')) * 100:.2f} cm, "
-          f"{ap.get('lateral_offset', float('nan')) * 1000:+.1f} mm off the push line")
+    print(
+        f"  env mode '{MODE}': OK | episode 0: {first['category']}, valid={first['valid']}, "
+        f"{dt:.1f} s for {first.get('rollouts', 0)} rollouts"
+    )
+    print(
+        f"  approach: {ap.get('steps')} steps, gap {ap.get('gap', float('nan')) * 100:.2f} cm, "
+        f"{ap.get('lateral_offset', float('nan')) * 1000:+.1f} mm off the push line"
+    )
     if first["valid"]:
-        print("  achieved pusher speed per commanded v (m/s): "
-              + ", ".join(f"{k}->{v}" for k, v in first["ee_speed"].items()))
+        print(
+            "  achieved pusher speed per commanded v (m/s): "
+            + ", ".join(f"{k}->{v}" for k, v in first["ee_speed"].items())
+        )
     eta = dt * n_target / max(1, N_WORKERS)
-    print(f"  projected time for {n_target} episodes on {N_WORKERS} workers: about {eta/60:.0f} min "
-          f"(rough: episodes differ, and laptop cores do not all run at full speed)")
+    print(
+        f"  projected time for {n_target} episodes on {N_WORKERS} workers: about {eta / 60:.0f} min "
+        f"(rough: episodes differ, and laptop cores do not all run at full speed)"
+    )
     if DRY_RUN:
         print("\n  DRY_RUN = True: nothing saved. Set DRY_RUN = False to run.")
         sys.exit(0)
@@ -529,11 +650,15 @@ if __name__ == "__main__":
                 if i % 10 == 0 or i == len(pending):
                     save_results(res)
                     el = time.time() - t_start
-                    print(f"    {i}/{len(pending)} done, {el/60:.1f} min elapsed, "
-                          f"~{el/i*(len(pending)-i)/60:.0f} min left")
+                    print(
+                        f"    {i}/{len(pending)} done, {el / 60:.1f} min elapsed, "
+                        f"~{el / i * (len(pending) - i) / 60:.0f} min left"
+                    )
     save_results(res)
-    sub = {"config": res["config"],
-           "episodes": {k: v for k, v in res["episodes"].items() if int(k) < n_target}}
+    sub = {
+        "config": res["config"],
+        "episodes": {k: v for k, v in res["episodes"].items() if int(k) < n_target},
+    }
     a = analyse(sub)
     res["analysis"] = a
     save_results(res)

@@ -45,33 +45,44 @@
 #   and the decision are unchanged.
 # OUT:  printed summary and task2_voi_followup.json
 
-import json
 import itertools
+import json
 import os
 import sys
 
 import numpy as np
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-RESULTS_FILE  = "task2_voi_results.json"
-OUT_FILE      = "task2_voi_followup.json"
-N_FULL        = 960                       # episodes of the full pilot run
-SELECTION_K   = (0, 120)                  # episodes used to choose the committed design
-CONFIRM_K     = (120, 960)                # episodes used only to confirm it
-COMMITTED     = {"K": 2, "band": (0.06, 0.10), "delta": 0.05}   # pre-registered
+RESULTS_FILE = "task2_voi_results.json"
+OUT_FILE = "task2_voi_followup.json"
+N_FULL = 960  # episodes of the full pilot run
+SELECTION_K = (0, 120)  # episodes used to choose the committed design
+CONFIRM_K = (120, 960)  # episodes used only to confirm it
+COMMITTED = {"K": 2, "band": (0.06, 0.10), "delta": 0.05}  # pre-registered
 GATE_GAP_PP, GATE_MIN_PCT = 15.0, 60.0
-N_BOOT, N_CV  = 1000, 200
-CV_TOP_A      = 5                         # Design A designs to cross-validate
-SEED          = 20261013
+N_BOOT, N_CV = 1000, 200
+CV_TOP_A = 5  # Design A designs to cross-validate
+SEED = 20261013
 
 CATEGORIES = ["Heavy Rust", "Wet Ice", "Coarse Sandpaper"]
-BANDS  = [(0.06, 0.10), (0.08, 0.12), (0.10, 0.14), (0.12, 0.16), (0.14, 0.18),
-          (0.16, 0.20), (0.18, 0.22), (0.20, 0.24), (0.08, 0.15), (0.10, 0.20)]
+BANDS = [
+    (0.06, 0.10),
+    (0.08, 0.12),
+    (0.10, 0.14),
+    (0.12, 0.16),
+    (0.14, 0.18),
+    (0.16, 0.20),
+    (0.18, 0.22),
+    (0.20, 0.24),
+    (0.08, 0.15),
+    (0.10, 0.20),
+]
 DELTAS = [0.03, 0.04, 0.05]
 SPLIT_Q = np.arange(0.1, 1.0, 0.1)
 
 
 # ── Data ──────────────────────────────────────────────────────────────────────
+
 
 def k3(x):
     return f"{x:.3f}"
@@ -84,13 +95,14 @@ class Data:
         eps = sorted([e for e in res["episodes"].values() if e.get("valid")], key=lambda e: e["k"])
         self.k = np.array([e["k"] for e in eps])
         self.cat = np.array([e["category"] for e in eps])
-        self.opts = ([("d", None, v, n - 1) for v in self.V for n in range(1, self.NMAX + 1)]
-                     + [("p", ap, "stop", 0) for ap in self.PV]
-                     + [("p", ap, v2, j) for ap in self.PV for v2 in self.V
-                        for j in range(1, self.NMAX)])
-        E, O = len(eps), len(self.opts)
-        self.S, self.L = np.full((E, O), np.nan), np.full((E, O), np.nan)
-        self.OK = np.zeros((E, O), bool)
+        self.opts = (
+            [("d", None, v, n - 1) for v in self.V for n in range(1, self.NMAX + 1)]
+            + [("p", ap, "stop", 0) for ap in self.PV]
+            + [("p", ap, v2, j) for ap in self.PV for v2 in self.V for j in range(1, self.NMAX)]
+        )
+        E, n_opt = len(eps), len(self.opts)
+        self.S, self.L = np.full((E, n_opt), np.nan), np.full((E, n_opt), np.nan)
+        self.OK = np.zeros((E, n_opt), bool)
         for i, e in enumerate(eps):
             for o, (f, ap, v, j) in enumerate(self.opts):
                 if f == "d":
@@ -104,15 +116,19 @@ class Data:
                     self.OK[i, o] = (r[2] & 1) == 1 and (r[2] & 2) == 0
         self.J = np.array([o[3] for o in self.opts])
         self.DIR = np.array([o[0] == "d" for o in self.opts])
-        self.PROBE = {ap: np.array([o[0] == "p" and o[1] == ap for o in self.opts]) for ap in self.PV}
-        self.F = {ap: np.array([e["feature"].get(k3(ap), [np.nan])[0] for e in eps]) for ap in self.PV}
+        self.PROBE = {
+            ap: np.array([o[0] == "p" and o[1] == ap for o in self.opts]) for ap in self.PV
+        }
+        self.F = {
+            ap: np.array([e["feature"].get(k3(ap), [np.nan])[0] for e in eps]) for ap in self.PV
+        }
         self._c = {}
 
     def succ(self, D, delta):
         key = (round(D, 4), delta)
         if key not in self._c:
             with np.errstate(invalid="ignore"):
-                self._c[key] = self.OK & (((self.S - D) ** 2 + self.L ** 2) < delta ** 2)
+                self._c[key] = self.OK & (((self.S - D) ** 2 + self.L**2) < delta**2)
         return self._c[key]
 
 
@@ -131,6 +147,7 @@ def stratified_halves(rng, cat, ix):
 
 
 # ── Committed strike ──────────────────────────────────────────────────────────
+
 
 def committed(data, ix, K, band, delta):
     sel = data.DIR & (data.J == K)
@@ -172,15 +189,20 @@ def committed_cv(data, ix, K, band, delta, rng):
                 catv.append(tot / len(te))
             gaps.append(100 * (np.mean(catv) - np.mean(single)))
             mins.append(100 * min(np.mean(v) for v in per.values()))
-    return {"gap_mean": float(np.mean(gaps)), "gap_2.5": float(np.percentile(gaps, 2.5)),
-            "gap_97.5": float(np.percentile(gaps, 97.5)), "min_cat_mean": float(np.mean(mins))}
+    return {
+        "gap_mean": float(np.mean(gaps)),
+        "gap_2.5": float(np.percentile(gaps, 2.5)),
+        "gap_97.5": float(np.percentile(gaps, 97.5)),
+        "min_cat_mean": float(np.mean(mins)),
+    }
 
 
 def committed_boot(data, ix, K, band, delta, rng):
     g = []
     for _ in range(N_BOOT):
-        b = np.concatenate([rng.choice(ix[data.cat[ix] == c], (data.cat[ix] == c).sum())
-                            for c in CATEGORIES])
+        b = np.concatenate(
+            [rng.choice(ix[data.cat[ix] == c], (data.cat[ix] == c).sum()) for c in CATEGORIES]
+        )
         g.append(committed(data, b, K, band, delta)["gap"])
     return [float(np.percentile(g, 2.5)), float(np.percentile(g, 97.5))]
 
@@ -191,12 +213,15 @@ def speed_table(data, ix, K, band, delta):
     out = {}
     for c in CATEGORIES:
         m = ix[data.cat[ix] == c]
-        out[c] = [100 * float(np.mean([data.succ(D, delta)[m][:, o].mean() for D in d_values(band)]))
-                  for o in sel]
+        out[c] = [
+            100 * float(np.mean([data.succ(D, delta)[m][:, o].mean() for D in d_values(band)]))
+            for o in sel
+        ]
     return [data.opts[o][2] for o in sel], out
 
 
 # ── Design A (feedback allowed) ───────────────────────────────────────────────
+
 
 def _bins(f, P, fit=True, policy=None):
     """Probing policy on the probe feature f: up to 3 bins, one continuation per
@@ -209,7 +234,11 @@ def _bins(f, P, fit=True, policy=None):
     if not fit:
         cuts, choice, nan_choice = policy
         idx = np.empty(len(f), int)
-        b = np.searchsorted(np.array(cuts), f[~nan], side="left") if cuts else np.zeros((~nan).sum(), int)
+        b = (
+            np.searchsorted(np.array(cuts), f[~nan], side="left")
+            if cuts
+            else np.zeros((~nan).sum(), int)
+        )
         idx[~nan] = np.array(choice)[b]
         idx[nan] = nan_choice
         return P[np.arange(len(f)), idx].mean()
@@ -225,8 +254,10 @@ def _bins(f, P, fit=True, policy=None):
     def seg(a, b):
         t = cum[b] - cum[a]
         return t.max(), int(np.argmax(t))
-    cand = sorted({int(np.searchsorted(fs, x, side="right")) for x in np.quantile(f, SPLIT_Q)}
-                  - {0, len(f)})
+
+    cand = sorted(
+        {int(np.searchsorted(fs, x, side="right")) for x in np.quantile(f, SPLIT_Q)} - {0, len(f)}
+    )
     v0, o0 = seg(0, len(f))
     best = (v0, [], [o0])
     for c in cand:
@@ -248,8 +279,10 @@ def design_a(data, ix, K, band, delta):
         s = data.succ(D, delta)[ix]
         sa = s[:, allowed]
         acc["single"].append(s[:, allowed & data.DIR].mean(0).max())
-        acc["probe"].append(max(_bins(data.F[ap][ix], s[:, allowed & data.PROBE[ap]])[0]
-                                for ap in data.PV) / len(ix))
+        acc["probe"].append(
+            max(_bins(data.F[ap][ix], s[:, allowed & data.PROBE[ap]])[0] for ap in data.PV)
+            / len(ix)
+        )
         tot_c = tot_cp = 0.0
         for c in CATEGORIES:
             m = data.cat[ix] == c
@@ -293,9 +326,14 @@ def design_a_cv(data, ix, K, band, delta, rng, reps):
             rows.append((np.mean(sg), np.mean(pg), np.mean(cg)))
     r = 100 * np.array(rows)
     gap = r[:, 2] - np.maximum(r[:, 0], r[:, 1])
-    return {"single": float(r[:, 0].mean()), "probe": float(r[:, 1].mean()),
-            "cat": float(r[:, 2].mean()), "gap_mean": float(gap.mean()),
-            "gap_2.5": float(np.percentile(gap, 2.5)), "gap_97.5": float(np.percentile(gap, 97.5))}
+    return {
+        "single": float(r[:, 0].mean()),
+        "probe": float(r[:, 1].mean()),
+        "cat": float(r[:, 2].mean()),
+        "gap_mean": float(gap.mean()),
+        "gap_2.5": float(np.percentile(gap, 2.5)),
+        "gap_97.5": float(np.percentile(gap, 97.5)),
+    }
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -311,14 +349,26 @@ if __name__ == "__main__":
     all_ix = np.arange(len(data.k))
     sel_ix = np.where((data.k >= SELECTION_K[0]) & (data.k < SELECTION_K[1]))[0]
     con_ix = np.where((data.k >= CONFIRM_K[0]) & (data.k < CONFIRM_K[1]))[0]
-    count = lambda ix: {c: int((data.cat[ix] == c).sum()) for c in CATEGORIES}
-    out = {"n_episodes": n_all, "n_valid": int(len(all_ix)), "counts_all": count(all_ix),
-           "counts_selection": count(sel_ix), "counts_confirmation": count(con_ix),
-           "committed_design": {**COMMITTED, "band": list(COMMITTED["band"])}}
-    print(f"{'#' * 96}\n  TASK-2 PILOT FOLLOW-UP | {len(all_ix)} valid of {n_all} episodes | "
-          f"selection {len(sel_ix)} ({count(sel_ix)}), confirmation {len(con_ix)} ({count(con_ix)})\n{'#' * 96}")
+
+    def count(ix):
+        return {c: int((data.cat[ix] == c).sum()) for c in CATEGORIES}
+
+    out = {
+        "n_episodes": n_all,
+        "n_valid": int(len(all_ix)),
+        "counts_all": count(all_ix),
+        "counts_selection": count(sel_ix),
+        "counts_confirmation": count(con_ix),
+        "committed_design": {**COMMITTED, "band": list(COMMITTED["band"])},
+    }
+    print(
+        f"{'#' * 96}\n  TASK-2 PILOT FOLLOW-UP | {len(all_ix)} valid of {n_all} episodes | "
+        f"selection {len(sel_ix)} ({count(sel_ix)}), confirmation {len(con_ix)} ({count(con_ix)})\n{'#' * 96}"
+    )
     if n_all < N_FULL:
-        print(f"  NOTE: only {n_all} of {N_FULL} episodes: the confirmation set is incomplete or empty.")
+        print(
+            f"  NOTE: only {n_all} of {N_FULL} episodes: the confirmation set is incomplete or empty."
+        )
 
     # A. Design A as run
     a_rows = []
@@ -327,32 +377,46 @@ if __name__ == "__main__":
     a_rows.sort(key=lambda x: -x[1]["gap"])
     a21 = res.get("analysis", {})
     print(f"\n  A. DESIGN A (feedback allowed), all {len(all_ix)} episodes")
-    print(f"     script 21's pre-registered gate: {a21.get('n_passing', '?')} design(s) pass "
-          f"(analysis over {a21.get('n_valid', '?')} episodes)")
-    print(f"     {'K':>2} {'band':>9} {'delta':>5} | in-sample: {'single':>6} {'probe':>6} {'cue':>6} "
-          f"{'gap':>6} {'cue+probe':>9} | cross-validated: {'probe':>6} {'cue':>6} {'gap':>6} [95% range]")
+    print(
+        f"     script 21's pre-registered gate: {a21.get('n_passing', '?')} design(s) pass "
+        f"(analysis over {a21.get('n_valid', '?')} episodes)"
+    )
+    print(
+        f"     {'K':>2} {'band':>9} {'delta':>5} | in-sample: {'single':>6} {'probe':>6} {'cue':>6} "
+        f"{'gap':>6} {'cue+probe':>9} | cross-validated: {'probe':>6} {'cue':>6} {'gap':>6} [95% range]"
+    )
     a_out = []
     for (K, band, delta), r in a_rows[:CV_TOP_A]:
         cv = design_a_cv(data, all_ix, K, band, delta, rng, reps=max(20, N_CV // 4))
         a_out.append({"K": K, "band": list(band), "delta": delta, "in_sample": r, "cv": cv})
-        print(f"     {K:2d} {band[0] * 100:4.0f}-{band[1] * 100:<4.0f} {delta * 100:5.0f} | "
-              f"{r['single']:16.1f} {r['probe']:6.1f} {r['cat']:6.1f} {r['gap']:+6.1f} {r['catprobe']:9.1f} | "
-              f"{cv['probe']:22.1f} {cv['cat']:6.1f} {cv['gap_mean']:+6.1f} "
-              f"[{cv['gap_2.5']:+.1f}, {cv['gap_97.5']:+.1f}]")
+        print(
+            f"     {K:2d} {band[0] * 100:4.0f}-{band[1] * 100:<4.0f} {delta * 100:5.0f} | "
+            f"{r['single']:16.1f} {r['probe']:6.1f} {r['cat']:6.1f} {r['gap']:+6.1f} {r['catprobe']:9.1f} | "
+            f"{cv['probe']:22.1f} {cv['cat']:6.1f} {cv['gap_mean']:+6.1f} "
+            f"[{cv['gap_2.5']:+.1f}, {cv['gap_97.5']:+.1f}]"
+        )
     print("     cue+probe: best policy that knows the material AND can probe (in-sample)")
     out["design_a_top"] = a_out
 
     # B. Committed strike
     K, band, delta = COMMITTED["K"], COMMITTED["band"], COMMITTED["delta"]
-    print(f"\n  B. COMMITTED STRIKE (pre-registered K = {K}, D {band[0] * 100:.0f}-{band[1] * 100:.0f} cm, "
-          f"delta = {delta * 100:.0f} cm)")
-    sel_rows = sorted(((d, committed(data, sel_ix, *d)) for d in
-                       itertools.product(range(data.NMAX), BANDS, DELTAS)),
-                      key=lambda x: (-x[1]["score"], x[0][2] != 0.05, x[0][0]))
+    print(
+        f"\n  B. COMMITTED STRIKE (pre-registered K = {K}, D {band[0] * 100:.0f}-{band[1] * 100:.0f} cm, "
+        f"delta = {delta * 100:.0f} cm)"
+    )
+    sel_rows = sorted(
+        (
+            (d, committed(data, sel_ix, *d))
+            for d in itertools.product(range(data.NMAX), BANDS, DELTAS)
+        ),
+        key=lambda x: (-x[1]["score"], x[0][2] != 0.05, x[0][0]),
+    )
     chosen = sel_rows[0][0]
-    print(f"     selection rule on episodes {SELECTION_K[0]}-{SELECTION_K[1] - 1} picks: K = {chosen[0]}, "
-          f"D {chosen[1][0] * 100:.0f}-{chosen[1][1] * 100:.0f} cm, delta = {chosen[2] * 100:.0f} cm "
-          f"({'matches' if chosen == (K, band, delta) else 'DIFFERS FROM'} the pre-registered design)")
+    print(
+        f"     selection rule on episodes {SELECTION_K[0]}-{SELECTION_K[1] - 1} picks: K = {chosen[0]}, "
+        f"D {chosen[1][0] * 100:.0f}-{chosen[1][1] * 100:.0f} cm, delta = {chosen[2] * 100:.0f} cm "
+        f"({'matches' if chosen == (K, band, delta) else 'DIFFERS FROM'} the pre-registered design)"
+    )
     out["selection_rule_pick"] = {"K": chosen[0], "band": list(chosen[1]), "delta": chosen[2]}
     for name, ix in (("selection", sel_ix), ("confirmation", con_ix)):
         if len(ix) < 30:
@@ -362,15 +426,19 @@ if __name__ == "__main__":
         boot = committed_boot(data, ix, K, band, delta, rng)
         cv = committed_cv(data, ix, K, band, delta, rng)
         out[f"committed_{name}"] = {"gate": r, "boot_ci95": boot, "cv": cv}
-        print(f"     {name:12s} ({len(ix):3d} ep.): single {r['single']:5.1f}  cue {r['cat']:5.1f}  "
-              + "  ".join(f"{c.split()[-1]} {r['cat_' + c]:5.1f}" for c in CATEGORIES)
-              + f"  | gap {r['gap']:+5.1f} [boot {boot[0]:+.1f}, {boot[1]:+.1f}]  "
-              f"CV gap {cv['gap_mean']:+.1f}, CV min material {cv['min_cat_mean']:.1f}  "
-              f"-> {'PASS' if r['passes'] else 'fail'}")
+        print(
+            f"     {name:12s} ({len(ix):3d} ep.): single {r['single']:5.1f}  cue {r['cat']:5.1f}  "
+            + "  ".join(f"{c.split()[-1]} {r['cat_' + c]:5.1f}" for c in CATEGORIES)
+            + f"  | gap {r['gap']:+5.1f} [boot {boot[0]:+.1f}, {boot[1]:+.1f}]  "
+            f"CV gap {cv['gap_mean']:+.1f}, CV min material {cv['min_cat_mean']:.1f}  "
+            f"-> {'PASS' if r['passes'] else 'fail'}"
+        )
     ix = con_ix if len(con_ix) >= 30 else sel_ix
     speeds, tab = speed_table(data, ix, K, band, delta)
-    print(f"     success (%) by commanded speed, {'confirmation' if ix is con_ix else 'selection'} episodes, "
-          f"averaged over D:")
+    print(
+        f"     success (%) by commanded speed, {'confirmation' if ix is con_ix else 'selection'} episodes, "
+        f"averaged over D:"
+    )
     print("       v (m/s)          " + "".join(f"{v:7.2f}" for v in speeds))
     for c in CATEGORIES:
         print(f"       {c:17s}" + "".join(f"{x:7.0f}" for x in tab[c]))
@@ -381,13 +449,17 @@ if __name__ == "__main__":
     c_res = out.get("committed_confirmation", {}).get("gate")
     print(f"\n{'#' * 96}\n  PRE-REGISTERED DECISION")
     if a21.get("n_valid", 0) < N_FULL * 0.95 or c_res is None:
-        decision = "incomplete: finish the full run (QUICK = False in script 21), then re-run this script"
+        decision = (
+            "incomplete: finish the full run (QUICK = False in script 21), then re-run this script"
+        )
     elif a_pass:
         decision = "Design A (feedback allowed), with the design script 21 chose"
     elif c_res["passes"]:
         decision = f"committed strike, K = {K}, D {band[0] * 100:.0f}-{band[1] * 100:.0f} cm, delta = {delta * 100:.0f} cm"
     else:
-        decision = "neither design passes: report both, move to Design B or report the negative result"
+        decision = (
+            "neither design passes: report both, move to Design B or report the negative result"
+        )
     print(f"  -> {decision}\n{'#' * 96}")
     out["decision"] = decision
     with open(OUT_FILE, "w") as f:

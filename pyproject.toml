@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pgda"
-version = "0.1.0"
+version = "0.1.1"
 description = "Physically-Grounded Diffusion Augmentation: Coupling diffusion-generated material textures to physical parameters for sim-to-real robotic manipulation"
 readme = "README.md"
 license = "MIT"
@@ -47,12 +47,18 @@ train = [
 eval = [
     "matplotlib>=3.6",
     "seaborn>=0.12",
+    "scipy>=1.9",
+]
+textures = [
+    "diffusers>=0.20",
+    "transformers>=4.30",
+    "accelerate>=0.20",
 ]
 
 [project.urls]
 Homepage = "https://github.com/Mohammedgmail/PGDA"
 Repository = "https://github.com/Mohammedgmail/PGDA"
-Paper = "https://doi.org/..."  # Add DOI when published
+# Paper = "https://doi.org/<DOI>"  # add when published
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -72,7 +78,13 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "NPY"]
-ignore = ["E501"]  # Line too long - allow for readability in scientific code
+ignore = [
+    "E501",    # Line too long - allow for readability in scientific code
+    "NPY002",  # Legacy np.random API: kept on purpose. Evaluation seeds the global
+               # generator per episode (10000 + 1000*seed + k); moving to
+               # np.random.Generator would change every episode and break
+               # reproduction of the reported results.
+]
 
 [tool.ruff.format]
 quote-style = "double"

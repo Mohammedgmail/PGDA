@@ -1,4 +1,6 @@
 # Example configuration for PGDA planar pushing experiment
+# Reference only: no script reads this file. Each script's settings are the
+# constants at the top of the file (see README).
 # This demonstrates the three material categories and their physics bounds
 
 environment:
@@ -35,7 +37,7 @@ training:
   total_timesteps: 1_000_000
   buffer_size: 1_000_000
   batch_size: 256
-  learning_rate: 1e-3
+  learning_rate: 1.57e-3          # Optuna result reported in the paper (Table A.1)
   gamma: 0.95
   tau: 0.005
   ent_coef: 0.1

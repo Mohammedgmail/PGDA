@@ -33,18 +33,20 @@
 #
 # Resumable: results saved after every (condition, seed).
 
-import os
-import sys
 import glob
 import json
+import os
 import random
+import sys
+
 import numpy as np
 
 # ── numpy 2.x checkpoint compatibility (same shim as 15 / 17) ────────────────
 if int(np.__version__.split(".")[0]) < 2:
     import numpy.core
-    import numpy.core.numeric
     import numpy.core.multiarray
+    import numpy.core.numeric
+
     try:
         import numpy.core._multiarray_umath as _mau
     except ImportError:
@@ -57,6 +59,7 @@ if int(np.__version__.split(".")[0]) < 2:
     if not hasattr(np, "_core"):
         np._core = numpy.core
     import numpy.random._pickle as _np_random_pickle
+
     _orig_ctor = _np_random_pickle.__bit_generator_ctor
 
     def _patched_ctor(bit_generator_name="MT19937"):
@@ -66,49 +69,61 @@ if int(np.__version__.split(".")[0]) < 2:
 
     _np_random_pickle.__bit_generator_ctor = _patched_ctor
 
-from stable_baselines3 import SAC
 from gymnasium.wrappers import TimeLimit
-from pushing_env import UR3ePushingEnv
+from stable_baselines3 import SAC
+
+from pgda.env import UR3ePushingEnv
+from pgda.paths import ENCODER_PATH
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 DRY_RUN = False
 
-SEEDS             = [42, 123, 456, 789, 1011]
-NUM_EPISODES      = 100
-EVAL_THRESHOLD    = 0.05
+SEEDS = [42, 123, 456, 789, 1011]
+NUM_EPISODES = 100
+EVAL_THRESHOLD = 0.05
 EPISODE_SEED_BASE = 10_000
-RESULTS_FILE      = "behaviour_results.json"
-ENCODER_PATH      = ("/Users/mohammedalfandi/Documents/Robotics and AI /"
-                     "MSc Project /Codes-2026/texture_encoder.pt")
-V_MOVE            = 0.02          # m/s: object counts as moving above this
-CODE_DIMS         = [9, 10]
+RESULTS_FILE = "behaviour_results.json"
+ENCODER_PATH = str(ENCODER_PATH)
+V_MOVE = 0.02  # m/s: object counts as moving above this
+CODE_DIMS = [9, 10]
 
 CATEGORIES = ["Heavy Rust", "Wet Ice", "Coarse Sandpaper"]
-CODES = {                          # same values as 17-baseline_label_check.py
+CODES = {  # same values as 17-baseline_label_check.py
     "Coarse Sandpaper": [0.400, 0.832],
-    "Heavy Rust":       [0.800, 0.597],
-    "Wet Ice":          [0.200, 0.013],
+    "Heavy Rust": [0.800, 0.597],
+    "Wet Ice": [0.200, 0.013],
 }
 
 RUN_IDS = {
-    "experimental": {42: "sgl94py3", 123: "1ktap4xi", 456: "lqckfjem",
-                     789: "n8cfyu4x", 1011: "289a4luz"},
-    "coupled_no_cue": {42: "lt56b7lo", 123: "t72zdfyj", 456: "azkfw077",
-                       789: "k2nomi95", 1011: "7djx8mih"},
+    "experimental": {
+        42: "sgl94py3",
+        123: "1ktap4xi",
+        456: "lqckfjem",
+        789: "n8cfyu4x",
+        1011: "289a4luz",
+    },
+    "coupled_no_cue": {
+        42: "lt56b7lo",
+        123: "t72zdfyj",
+        456: "azkfw077",
+        789: "k2nomi95",
+        1011: "7djx8mih",
+    },
 }
 
 # condition -> (checkpoint type, env mode, needs encoder, forced code or None)
 CONDITIONS = {
-    "PGDA encoder":          ("experimental", "experimental", True, None),
-    "PGDA code=Heavy Rust":  ("experimental", "experimental", True, "Heavy Rust"),
-    "PGDA code=Wet Ice":     ("experimental", "experimental", True, "Wet Ice"),
-    "PGDA code=Sandpaper":   ("experimental", "experimental", True, "Coarse Sandpaper"),
-    "No-Cue (E)":            ("coupled_no_cue", "coupled_no_cue", False, None),
+    "PGDA encoder": ("experimental", "experimental", True, None),
+    "PGDA code=Heavy Rust": ("experimental", "experimental", True, "Heavy Rust"),
+    "PGDA code=Wet Ice": ("experimental", "experimental", True, "Wet Ice"),
+    "PGDA code=Sandpaper": ("experimental", "experimental", True, "Coarse Sandpaper"),
+    "No-Cue (E)": ("coupled_no_cue", "coupled_no_cue", False, None),
 }
 METRICS = ["push_effort", "strike_offset", "spin", "bouts", "yaw_change", "steps_to_success"]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def ckpt_path(ck, seed):
     rid = RUN_IDS.get(ck, {}).get(seed, "")
@@ -119,18 +134,27 @@ def ckpt_path(ck, seed):
 
 
 def make_env(mode, needs_encoder):
-    env = UR3ePushingEnv(render_mode=None, randomization_mode=mode,
-                         reward_weights={"success_threshold": EVAL_THRESHOLD},
-                         encoder_path=ENCODER_PATH if needs_encoder else None)
+    env = UR3ePushingEnv(
+        render_mode=None,
+        randomization_mode=mode,
+        reward_weights={"success_threshold": EVAL_THRESHOLD},
+        encoder_path=ENCODER_PATH if needs_encoder else None,
+    )
     env.success_threshold = EVAL_THRESHOLD
     return TimeLimit(env, max_episode_steps=200)
 
 
 def load_model(path, env):
-    return SAC.load(path, env=env, device="cpu", custom_objects={
-        "action_space": env.action_space,
-        "observation_space": env.observation_space,
-        "lr_schedule": lambda _: 0.0})
+    return SAC.load(
+        path,
+        env=env,
+        device="cpu",
+        custom_objects={
+            "action_space": env.action_space,
+            "observation_space": env.observation_space,
+            "lr_schedule": lambda _: 0.0,
+        },
+    )
 
 
 def with_code(obs, code):
@@ -155,9 +179,9 @@ def episode_metrics(steps, success, steps_to_suc, final_dist):
         a = np.asarray(a, dtype=float).reshape(-1)[:2]
         r = np.asarray(ob["achieved_goal"], float)[:2] - np.asarray(o[:2], float)  # EE -> object
         na = np.linalg.norm(a)
-        effort.append(na * 100.0)                                   # cm per step
+        effort.append(na * 100.0)  # cm per step
         if na > 1e-6:
-            offset.append(abs(a[0] * r[1] - a[1] * r[0]) / na * 100.0)   # cm
+            offset.append(abs(a[0] * r[1] - a[1] * r[0]) / na * 100.0)  # cm
         spin.append(abs(float(o2[7])))
     bouts = sum(1 for i, m in enumerate(moving) if m and (i == 0 or not moving[i - 1]))
     yaw = np.unwrap(np.array(yaws)) if len(yaws) > 1 else np.zeros(1)
@@ -189,16 +213,23 @@ def run_condition(model, env, seed, forced):
         while not (done or truncated) and n < 200:
             action, _ = model.predict(with_code(obs, code), deterministic=True)
             obs2, _, done, truncated, info = env.step(action)
-            steps.append(({k: np.array(v, copy=True) for k, v in obs.items()},
-                          np.array(action, copy=True),
-                          {k: np.array(v, copy=True) for k, v in obs2.items()}))
+            steps.append(
+                (
+                    {k: np.array(v, copy=True) for k, v in obs.items()},
+                    np.array(action, copy=True),
+                    {k: np.array(v, copy=True) for k, v in obs2.items()},
+                )
+            )
             obs = obs2
             n += 1
             if info.get("is_success", False) and steps_to_suc is None:
                 steps_to_suc, success = n, True
         genuine = bool(success and (steps_to_suc is None or steps_to_suc > 1))
-        final = float(np.linalg.norm(np.asarray(obs["achieved_goal"])[:2]
-                                     - np.asarray(obs["desired_goal"])[:2]))
+        final = float(
+            np.linalg.norm(
+                np.asarray(obs["achieved_goal"])[:2] - np.asarray(obs["desired_goal"])[:2]
+            )
+        )
         m = episode_metrics(steps, genuine, steps_to_suc, final)
         m.update({"episode": ep, "category": cat})
         records.append(m)
@@ -206,6 +237,7 @@ def run_condition(model, env, seed, forced):
 
 
 # ── Summary ───────────────────────────────────────────────────────────────────
+
 
 def nanmean(x):
     x = np.array([v for v in x if v is not None and not np.isnan(v)], float)
@@ -225,17 +257,24 @@ def summarise(res):
             out += [e for e in r["episodes"] if cat is None or e["category"] == cat]
         return out
 
-    print(f"\n{'#'*86}\n  SUCCESS (%) — rows: condition, columns: TRUE material "
-          f"(physics never changes)\n{'#'*86}")
+    print(
+        f"\n{'#' * 86}\n  SUCCESS (%) — rows: condition, columns: TRUE material "
+        f"(physics never changes)\n{'#' * 86}"
+    )
     print(f"  {'':24s}" + "".join(f"{c:>18s}" for c in CATEGORIES) + f"{'All':>10s}")
     for cond in conds:
-        row = [100 * nanmean([e['success'] for e in recs(cond, c)]) for c in CATEGORIES]
-        allr = 100 * nanmean([e['success'] for e in recs(cond)])
+        row = [100 * nanmean([e["success"] for e in recs(cond, c)]) for c in CATEGORIES]
+        allr = 100 * nanmean([e["success"] for e in recs(cond)])
         print(f"  {cond:24s}" + "".join(f"{v:18.1f}" for v in row) + f"{allr:10.1f}")
     print("  (diagonal of the three forced-code rows = PGDA with a perfect encoder)")
 
-    for metric, unit in [("push_effort", "cm per step, max 7.07"), ("strike_offset", "cm"),
-                         ("spin", "rad/s"), ("bouts", "count"), ("yaw_change", "deg")]:
+    for metric, unit in [
+        ("push_effort", "cm per step, max 7.07"),
+        ("strike_offset", "cm"),
+        ("spin", "rad/s"),
+        ("bouts", "count"),
+        ("yaw_change", "deg"),
+    ]:
         print(f"\n  {metric} ({unit})")
         print(f"  {'':24s}" + "".join(f"{c:>18s}" for c in CATEGORIES))
         for cond in conds:
@@ -243,10 +282,15 @@ def summarise(res):
             print(f"  {cond:24s}" + "".join(f"{v:18.3f}" for v in row))
 
     # Does the code change behaviour with physics held fixed? Seed-level test.
-    print(f"\n{'#'*86}\n  EFFECT OF THE CODE WITH PHYSICS FIXED (seed-level means, paired over seeds)\n{'#'*86}")
+    print(
+        f"\n{'#' * 86}\n  EFFECT OF THE CODE WITH PHYSICS FIXED (seed-level means, paired over seeds)\n{'#' * 86}"
+    )
     for cat in CATEGORIES:
-        true_cond = {"Heavy Rust": "PGDA code=Heavy Rust", "Wet Ice": "PGDA code=Wet Ice",
-                     "Coarse Sandpaper": "PGDA code=Sandpaper"}[cat]
+        true_cond = {
+            "Heavy Rust": "PGDA code=Heavy Rust",
+            "Wet Ice": "PGDA code=Wet Ice",
+            "Coarse Sandpaper": "PGDA code=Sandpaper",
+        }[cat]
         for other in [c for c in conds if c.startswith("PGDA code=") and c != true_cond]:
             for metric in ["success", "push_effort", "strike_offset"]:
                 a, b = [], []
@@ -264,18 +308,23 @@ def summarise(res):
                     continue
                 scale = 100 if metric == "success" else 1
                 d = (np.array(b) - np.array(a)) * scale
-                p = (f", p = {stats.ttest_rel(b, a).pvalue:.3f}"
-                     if stats is not None and len(a) >= 3 else "")
-                print(f"  true {cat:16s} | {other.replace('PGDA ', ''):22s} vs true code: "
-                      f"{metric:13s} {d.mean():+8.3f}{p}")
+                p = (
+                    f", p = {stats.ttest_rel(b, a).pvalue:.3f}"
+                    if stats is not None and len(a) >= 3
+                    else ""
+                )
+                print(
+                    f"  true {cat:16s} | {other.replace('PGDA ', ''):22s} vs true code: "
+                    f"{metric:13s} {d.mean():+8.3f}{p}"
+                )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print(f"{'='*86}\n  Behaviour analysis | DRY_RUN = {DRY_RUN}\n{'='*86}")
+    print(f"{'=' * 86}\n  Behaviour analysis | DRY_RUN = {DRY_RUN}\n{'=' * 86}")
     missing = 0
-    for cond, (ck, mode, enc, forced) in CONDITIONS.items():
+    for cond, (ck, _mode, _enc, _forced) in CONDITIONS.items():
         for s in SEEDS:
             p_ = ckpt_path(ck, s)
             ok = p_ is not None and os.path.exists(p_)

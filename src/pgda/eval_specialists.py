@@ -25,18 +25,20 @@
 # keyed by category, so the bound tightens as you add specialists.
 # Resumable: results saved after every (agent, seed).
 
-import os
-import sys
 import glob
 import json
+import os
 import random
+import sys
+
 import numpy as np
 
 # ── numpy 2.x checkpoint compatibility (same shim as 15 / 17) ────────────────
 if int(np.__version__.split(".")[0]) < 2:
     import numpy.core
-    import numpy.core.numeric
     import numpy.core.multiarray
+    import numpy.core.numeric
+
     try:
         import numpy.core._multiarray_umath as _mau
     except ImportError:
@@ -49,6 +51,7 @@ if int(np.__version__.split(".")[0]) < 2:
     if not hasattr(np, "_core"):
         np._core = numpy.core
     import numpy.random._pickle as _np_random_pickle
+
     _orig_ctor = _np_random_pickle.__bit_generator_ctor
 
     def _patched_ctor(bit_generator_name="MT19937"):
@@ -58,55 +61,78 @@ if int(np.__version__.split(".")[0]) < 2:
 
     _np_random_pickle.__bit_generator_ctor = _patched_ctor
 
-from stable_baselines3 import SAC
 from gymnasium.wrappers import TimeLimit
-from pushing_env import UR3ePushingEnv
+from stable_baselines3 import SAC
+
+from pgda.env import UR3ePushingEnv
+from pgda.paths import ENCODER_PATH
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-DRY_RUN = False          # True: list checkpoints and episode counts only
+DRY_RUN = False  # True: list checkpoints and episode counts only
 
-TARGET            = "Wet Ice"     # must match CATEGORY used in 18-train_specialist.py
-SEEDS             = [42, 123, 456, 789, 1011]
-N_PER_SEED        = 100           # target-category episodes per seed
-MAX_K             = 999           # stay inside each seed's block of 1000 seeds
-EVAL_THRESHOLD    = 0.05
-EPISODE_SEED_BASE = 10_000        # same as 13 / 15 / 17
-RESULTS_FILE      = "specialist_results.json"
-TABLE3_FILE       = "coupled_and_category_results.json"   # from script 13
-ENCODER_PATH      = ("/Users/mohammedalfandi/Documents/Robotics and AI /"
-                     "MSc Project /Codes-2026/texture_encoder.pt")
-CATEGORIES        = ["Heavy Rust", "Wet Ice", "Coarse Sandpaper"]
+TARGET = "Wet Ice"  # must match CATEGORY used in 18-train_specialist.py
+SEEDS = [42, 123, 456, 789, 1011]
+N_PER_SEED = 100  # target-category episodes per seed
+MAX_K = 999  # stay inside each seed's block of 1000 seeds
+EVAL_THRESHOLD = 0.05
+EPISODE_SEED_BASE = 10_000  # same as 13 / 15 / 17
+RESULTS_FILE = "specialist_results.json"
+TABLE3_FILE = "coupled_and_category_results.json"  # from script 13
+ENCODER_PATH = str(ENCODER_PATH)
+CATEGORIES = ["Heavy Rust", "Wet Ice", "Coarse Sandpaper"]
 
 # Specialist run IDs per category and seed (printed at the end of training).
 # Blank = auto-discover the newest models/*/final_model_specialist_<slug>_seed<s>.zip
 SPECIALIST_RUN_IDS = {
-    "Wet Ice":          {42: "cxz4zstx", 123: "0ud8ouef", 456: "bd1uxkzg", 789: "mfk1vhmc", 1011: "9ore1pfd"},
-    "Heavy Rust":       {},
+    "Wet Ice": {
+        42: "cxz4zstx",
+        123: "0ud8ouef",
+        456: "bd1uxkzg",
+        789: "mfk1vhmc",
+        1011: "9ore1pfd",
+    },
+    "Heavy Rust": {},
     "Coarse Sandpaper": {},
 }
 
 # Generalists: same run IDs as 13 / 15 / 17 (blank = auto-discover, as in 13)
 RUN_IDS = {
-    "baseline": {42: "8nmpi7rn", 123: "re3t6y0u", 456: "e135k9g9",
-                 789: "nkf3hbh8", 1011: "bmnmufqc"},
-    "experimental": {42: "sgl94py3", 123: "1ktap4xi", 456: "lqckfjem",
-                     789: "n8cfyu4x", 1011: "289a4luz"},
-    "coupled_no_cue": {42: "lt56b7lo", 123: "t72zdfyj", 456: "azkfw077",
-                       789: "k2nomi95", 1011: "7djx8mih"},
+    "baseline": {
+        42: "8nmpi7rn",
+        123: "re3t6y0u",
+        456: "e135k9g9",
+        789: "nkf3hbh8",
+        1011: "bmnmufqc",
+    },
+    "experimental": {
+        42: "sgl94py3",
+        123: "1ktap4xi",
+        456: "lqckfjem",
+        789: "n8cfyu4x",
+        1011: "289a4luz",
+    },
+    "coupled_no_cue": {
+        42: "lt56b7lo",
+        123: "t72zdfyj",
+        456: "azkfw077",
+        789: "k2nomi95",
+        1011: "7djx8mih",
+    },
     "oracle": {42: "y0ruahqi", 123: "", 456: "", 789: "", 1011: ""},
 }
 
 # name -> (checkpoint type, env mode, needs encoder, label)  [as in script 13]
 GENERALISTS = {
-    "agent_e":             ("coupled_no_cue", "coupled_no_cue", False, "No-Cue (E)"),
-    "pgda":                ("experimental", "experimental", True, "PGDA (B)"),
-    "oracle":              ("oracle", "oracle", True, "Oracle (C)"),
+    "agent_e": ("coupled_no_cue", "coupled_no_cue", False, "No-Cue (E)"),
+    "pgda": ("experimental", "experimental", True, "PGDA (B)"),
+    "oracle": ("oracle", "oracle", True, "Oracle (C)"),
     "baseline_on_coupled": ("baseline", "coupled_no_cue", False, "Baseline (A)"),
 }
 AGENTS_TO_RUN = ["specialist", "agent_e", "pgda", "oracle", "baseline_on_coupled"]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def slug(cat):
     return cat.lower().replace(" ", "_")
@@ -137,18 +163,27 @@ def agent_setup(agent):
 
 
 def make_env(mode, needs_encoder):
-    env = UR3ePushingEnv(render_mode=None, randomization_mode=mode,
-                         reward_weights={"success_threshold": EVAL_THRESHOLD},
-                         encoder_path=ENCODER_PATH if needs_encoder else None)
+    env = UR3ePushingEnv(
+        render_mode=None,
+        randomization_mode=mode,
+        reward_weights={"success_threshold": EVAL_THRESHOLD},
+        encoder_path=ENCODER_PATH if needs_encoder else None,
+    )
     env.success_threshold = EVAL_THRESHOLD
     return TimeLimit(env, max_episode_steps=200)
 
 
 def load_model(path, env):
-    return SAC.load(path, env=env, device="cpu", custom_objects={
-        "action_space": env.action_space,
-        "observation_space": env.observation_space,
-        "lr_schedule": lambda _: 0.0})
+    return SAC.load(
+        path,
+        env=env,
+        device="cpu",
+        custom_objects={
+            "action_space": env.action_space,
+            "observation_space": env.observation_space,
+            "lr_schedule": lambda _: 0.0,
+        },
+    )
 
 
 def seeded_reset(env, seed, k):
@@ -180,8 +215,10 @@ def run_episodes(model, env, seed, ks):
     for k in ks:
         obs, cat = seeded_reset(env, seed, k)
         if cat != TARGET:
-            raise RuntimeError(f"seed {seed}, k={k}: expected {TARGET}, got {cat}. "
-                               f"Categories differ between environment modes.")
+            raise RuntimeError(
+                f"seed {seed}, k={k}: expected {TARGET}, got {cat}. "
+                f"Categories differ between environment modes."
+            )
         done = truncated = False
         steps, steps_to_suc, success = 0, None, False
         while not (done or truncated) and steps < 200:
@@ -197,6 +234,7 @@ def run_episodes(model, env, seed, ks):
 
 
 # ── Summary and bound ─────────────────────────────────────────────────────────
+
 
 def table3_stats():
     """p_c and No-Cue per-category success from script 13, if available."""
@@ -223,7 +261,9 @@ def summarise(res):
         from scipy import stats
     except Exception:
         stats = None
-    print(f"\n{'#'*76}\n  SUCCESS ON THE SAME TARGET-CATEGORY EPISODES (mean ± sd over seeds)\n{'#'*76}")
+    print(
+        f"\n{'#' * 76}\n  SUCCESS ON THE SAME TARGET-CATEGORY EPISODES (mean ± sd over seeds)\n{'#' * 76}"
+    )
     for cat, block in res.items():
         print(f"\n  {cat}  ({N_PER_SEED} episodes per seed)")
         rates = {}
@@ -231,12 +271,14 @@ def summarise(res):
             runs = block.get(agent, {})
             if not runs:
                 continue
-            v = {int(s.split('_')[1]): round(r["success_rate"] * 100, 1) for s, r in runs.items()}
+            v = {int(s.split("_")[1]): round(r["success_rate"] * 100, 1) for s, r in runs.items()}
             rates[agent] = v
             arr = np.array(list(v.values()))
             label = agent_setup(agent)[2] if agent != "specialist" else f"Specialist ({cat})"
-            print(f"    {label:24s} {arr.mean():5.1f} ± {arr.std(ddof=1) if len(arr) > 1 else 0:4.1f}%"
-                  f"   per seed {dict(sorted(v.items()))}")
+            print(
+                f"    {label:24s} {arr.mean():5.1f} ± {arr.std(ddof=1) if len(arr) > 1 else 0:4.1f}%"
+                f"   per seed {dict(sorted(v.items()))}"
+            )
         if "specialist" in rates:
             for other in ["agent_e", "pgda", "oracle"]:
                 if other not in rates:
@@ -248,15 +290,17 @@ def summarise(res):
                 ptxt = ""
                 if stats is not None and len(common) >= 3:
                     ptxt = f", seed-paired p = {stats.ttest_rel([rates['specialist'][s] for s in common], [rates[other][s] for s in common]).pvalue:.3f}"
-                print(f"    Specialist − {agent_setup(other)[2]:12s} {d.mean():+5.1f} pp "
-                      f"(seeds {common}){ptxt}")
+                print(
+                    f"    Specialist − {agent_setup(other)[2]:12s} {d.mean():+5.1f} pp "
+                    f"(seeds {common}){ptxt}"
+                )
 
     # Bound
     p, e_t3 = table3_stats()
     if p is None:
         p = {c: 1 / 3 for c in CATEGORIES}
         print("\n  (coupled_and_category_results.json not found: using p_c = 1/3)")
-    print(f"\n{'#'*76}\n  LARGEST GAIN ANY CUE COULD ADD OVER THE NO-CUE AGENT\n{'#'*76}")
+    print(f"\n{'#' * 76}\n  LARGEST GAIN ANY CUE COULD ADD OVER THE NO-CUE AGENT\n{'#' * 76}")
     total, notes = 0.0, []
     for c in CATEGORIES:
         block = res.get(c, {})
@@ -268,7 +312,7 @@ def summarise(res):
             src = "measured"
         else:
             s_spec, src = 100.0, "capped at 100%"
-        if spec and common:      # same seeds and episodes for both
+        if spec and common:  # same seeds and episodes for both
             s_spec = np.mean([spec[k]["success_rate"] * 100 for k in common])
             s_e = np.mean([e_here[k]["success_rate"] * 100 for k in common])
         elif e_here:
@@ -282,10 +326,14 @@ def summarise(res):
             continue
         gap = s_spec - s_e
         total += p[c] * gap
-        print(f"    {c:17s} p = {p[c]:.3f}   specialist {s_spec:5.1f}% ({src:14s})  "
-              f"No-Cue {s_e:5.1f}%   gap {gap:+5.1f} pp")
-    print(f"\n    Delta_max = {total:+.1f} pp  "
-          f"(any cue, even a perfect one, could raise success by at most this much)")
+        print(
+            f"    {c:17s} p = {p[c]:.3f}   specialist {s_spec:5.1f}% ({src:14s})  "
+            f"No-Cue {s_e:5.1f}%   gap {gap:+5.1f} pp"
+        )
+    print(
+        f"\n    Delta_max = {total:+.1f} pp  "
+        f"(any cue, even a perfect one, could raise success by at most this much)"
+    )
     for n in notes:
         print(f"    note: {n}")
 
@@ -293,11 +341,16 @@ def summarise(res):
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print(f"{'='*76}\n  Specialist evaluation | TARGET = {TARGET} | DRY_RUN = {DRY_RUN}\n{'='*76}")
+    print(
+        f"{'=' * 76}\n  Specialist evaluation | TARGET = {TARGET} | DRY_RUN = {DRY_RUN}\n{'=' * 76}"
+    )
     plan = []
     for agent in AGENTS_TO_RUN:
-        seeds = (sorted(SPECIALIST_RUN_IDS.get(TARGET, {})) or SEEDS) \
-            if agent == "specialist" else SEEDS
+        seeds = (
+            (sorted(SPECIALIST_RUN_IDS.get(TARGET, {})) or SEEDS)
+            if agent == "specialist"
+            else SEEDS
+        )
         for s in seeds:
             p_ = ckpt_path(agent, s)
             ok = p_ is not None and os.path.exists(p_)
@@ -314,7 +367,9 @@ if __name__ == "__main__":
     if DRY_RUN:
         s0 = SEEDS[0]
         ks = target_episode_ks(s0)
-        print(f"\n  Seed {s0}: {len(ks)} {TARGET} episodes found within k <= {ks[-1] if ks else '-'}.")
+        print(
+            f"\n  Seed {s0}: {len(ks)} {TARGET} episodes found within k <= {ks[-1] if ks else '-'}."
+        )
         print("  DRY_RUN = True: nothing evaluated. Set DRY_RUN = False to run.")
         sys.exit(0)
 
@@ -331,9 +386,13 @@ if __name__ == "__main__":
         model = load_model(path, env)
         succ, outcomes = run_episodes(model, env, s, ks)
         env.close()
-        block[key] = {"successes": succ, "episodes": len(ks),
-                      "success_rate": succ / len(ks), "outcomes": outcomes,
-                      "checkpoint": path}
+        block[key] = {
+            "successes": succ,
+            "episodes": len(ks),
+            "success_rate": succ / len(ks),
+            "outcomes": outcomes,
+            "checkpoint": path,
+        }
         with open(RESULTS_FILE, "w") as f:
             json.dump(res, f, indent=2)
         print(f"  {label:24s} seed {s:4d}: {succ}/{len(ks)}")

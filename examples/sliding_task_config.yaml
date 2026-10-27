@@ -1,4 +1,6 @@
 # Example configuration for PGDA Task 2: Sliding with conflicting material-specific pushes
+# Reference only: no script reads this file. Each script's settings are the
+# constants at the top of the file (see README).
 # This task requires different push strategies for different materials
 
 environment:

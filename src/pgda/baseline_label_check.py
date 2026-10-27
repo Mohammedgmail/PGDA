@@ -22,18 +22,20 @@
 #
 # Resumable: results saved after every (condition, seed).
 
-import os
-import sys
 import glob
 import json
+import os
 import random
+import sys
+
 import numpy as np
 
 # ── numpy 2.x checkpoint compatibility (same shim as 15-eval_feedback_noise.py)
 if int(np.__version__.split(".")[0]) < 2:
     import numpy.core
-    import numpy.core.numeric
     import numpy.core.multiarray
+    import numpy.core.numeric
+
     try:
         import numpy.core._multiarray_umath as _mau
     except ImportError:
@@ -46,6 +48,7 @@ if int(np.__version__.split(".")[0]) < 2:
     if not hasattr(np, "_core"):
         np._core = numpy.core
     import numpy.random._pickle as _np_random_pickle
+
     _orig_ctor = _np_random_pickle.__bit_generator_ctor
 
     def _patched_ctor(bit_generator_name="MT19937"):
@@ -55,36 +58,37 @@ if int(np.__version__.split(".")[0]) < 2:
 
     _np_random_pickle.__bit_generator_ctor = _patched_ctor
 
-from stable_baselines3 import SAC
 from gymnasium.wrappers import TimeLimit
-from pushing_env import UR3ePushingEnv
+from stable_baselines3 import SAC
+
+from pgda.env import UR3ePushingEnv
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-DRY_RUN = False         # True: list checkpoints only, no evaluation
+DRY_RUN = False  # True: list checkpoints only, no evaluation
 
-SEEDS             = [42, 123, 456, 789, 1011]
-NUM_EPISODES      = 100
-EVAL_THRESHOLD    = 0.05
-EPISODE_SEED_BASE = 10_000        # same as 13-eval_coupled_and_category.py
-RESULTS_FILE      = "baseline_label_check.json"
-CODE_DIMS         = [9, 10]
+SEEDS = [42, 123, 456, 789, 1011]
+NUM_EPISODES = 100
+EVAL_THRESHOLD = 0.05
+EPISODE_SEED_BASE = 10_000  # same as 13-eval_coupled_and_category.py
+RESULTS_FILE = "baseline_label_check.json"
+CODE_DIMS = [9, 10]
 
 # Same Baseline run IDs as 13 / 15
-RUN_IDS = {42: "8nmpi7rn", 123: "re3t6y0u", 456: "e135k9g9",
-           789: "nkf3hbh8", 1011: "bmnmufqc"}
+RUN_IDS = {42: "8nmpi7rn", 123: "re3t6y0u", 456: "e135k9g9", 789: "nkf3hbh8", 1011: "bmnmufqc"}
 
 # Category code = normalised midpoint (Appendix C). These must match what
 # 14-deploy_policy.py writes; check them against that script before running.
 CODES = {
     "Coarse Sandpaper": [0.400, 0.832],
-    "Heavy Rust":       [0.800, 0.597],
-    "Wet Ice":          [0.200, 0.013],
+    "Heavy Rust": [0.800, 0.597],
+    "Wet Ice": [0.200, 0.013],
 }
 CONDITIONS = ["zero", "label"]
 CATEGORIES = ["Heavy Rust", "Wet Ice", "Coarse Sandpaper"]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def ckpt_path(seed):
     rid = RUN_IDS.get(seed, "")
@@ -95,18 +99,27 @@ def ckpt_path(seed):
 
 
 def make_env():
-    env = UR3ePushingEnv(render_mode=None, randomization_mode="coupled_no_cue",
-                         reward_weights={"success_threshold": EVAL_THRESHOLD},
-                         encoder_path=None)
+    env = UR3ePushingEnv(
+        render_mode=None,
+        randomization_mode="coupled_no_cue",
+        reward_weights={"success_threshold": EVAL_THRESHOLD},
+        encoder_path=None,
+    )
     env.success_threshold = EVAL_THRESHOLD
     return TimeLimit(env, max_episode_steps=200)
 
 
 def load_model(path, env):
-    return SAC.load(path, env=env, device="cpu", custom_objects={
-        "action_space": env.action_space,
-        "observation_space": env.observation_space,
-        "lr_schedule": lambda _: 0.0})
+    return SAC.load(
+        path,
+        env=env,
+        device="cpu",
+        custom_objects={
+            "action_space": env.action_space,
+            "observation_space": env.observation_space,
+            "lr_schedule": lambda _: 0.0,
+        },
+    )
 
 
 def with_code(obs, code):
@@ -147,43 +160,60 @@ def run_episodes(model, env, seed, condition, n):
 
 
 def summarise(res):
-    print(f"\n{'#'*72}\n  BASELINE (A) ON COUPLED DYNAMICS: label in dims 9-10 vs zero\n{'#'*72}")
+    print(
+        f"\n{'#' * 72}\n  BASELINE (A) ON COUPLED DYNAMICS: label in dims 9-10 vs zero\n{'#' * 72}"
+    )
     rates = {}
     for cond in CONDITIONS:
         runs = res.get(cond, {})
         if not runs:
             continue
-        v = np.array([runs[f"seed_{s}"]["success_rate"] * 100 for s in SEEDS
-                      if f"seed_{s}" in runs])
+        v = np.array(
+            [runs[f"seed_{s}"]["success_rate"] * 100 for s in SEEDS if f"seed_{s}" in runs]
+        )
         rates[cond] = v
         cats = []
         for c in CATEGORIES:
             S = sum(r["per_category"].get(c, {}).get("successes", 0) for r in runs.values())
             N = sum(r["per_category"].get(c, {}).get("episodes", 0) for r in runs.values())
             cats.append(f"{c.split()[-1]} {100 * S / max(N, 1):5.1f}% ({S}/{N})")
-        S = sum(r["per_category"].get(c, {}).get("successes", 0)
-                for r in runs.values() for c in ["Heavy Rust", "Coarse Sandpaper"])
-        N = sum(r["per_category"].get(c, {}).get("episodes", 0)
-                for r in runs.values() for c in ["Heavy Rust", "Coarse Sandpaper"])
-        print(f"  {cond:6s} overall {v.mean():5.1f} ± {v.std(ddof=1) if len(v) > 1 else 0:3.1f}%   "
-              + "   ".join(cats) + f"   Rust+Sand {100 * S / max(N, 1):5.1f}%")
+        S = sum(
+            r["per_category"].get(c, {}).get("successes", 0)
+            for r in runs.values()
+            for c in ["Heavy Rust", "Coarse Sandpaper"]
+        )
+        N = sum(
+            r["per_category"].get(c, {}).get("episodes", 0)
+            for r in runs.values()
+            for c in ["Heavy Rust", "Coarse Sandpaper"]
+        )
+        print(
+            f"  {cond:6s} overall {v.mean():5.1f} ± {v.std(ddof=1) if len(v) > 1 else 0:3.1f}%   "
+            + "   ".join(cats)
+            + f"   Rust+Sand {100 * S / max(N, 1):5.1f}%"
+        )
     if "zero" in rates and "label" in rates and len(rates["zero"]) == len(rates["label"]):
         d = rates["label"] - rates["zero"]
         try:
             from scipy import stats
+
             p = stats.ttest_rel(rates["label"], rates["zero"]).pvalue
             ptxt = f", seed-paired p = {p:.3f}"
         except Exception:
             ptxt = ""
-        print(f"\n  label - zero: {d.mean():+.1f} pp overall (per seed {d.astype(int).tolist()}){ptxt}")
-        print("  Expected for 'zero': 83.6% overall, Rust 97.3%, Sandpaper 98.0% "
-              "(13-eval_coupled_and_category.py).")
+        print(
+            f"\n  label - zero: {d.mean():+.1f} pp overall (per seed {d.astype(int).tolist()}){ptxt}"
+        )
+        print(
+            "  Expected for 'zero': 83.6% overall, Rust 97.3%, Sandpaper 98.0% "
+            "(13-eval_coupled_and_category.py)."
+        )
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print(f"{'='*72}\n  Baseline label check | DRY_RUN = {DRY_RUN}\n{'='*72}")
+    print(f"{'=' * 72}\n  Baseline label check | DRY_RUN = {DRY_RUN}\n{'=' * 72}")
     missing = 0
     for s in SEEDS:
         p_ = ckpt_path(s)
@@ -214,16 +244,20 @@ if __name__ == "__main__":
             succ, per_cat = run_episodes(model, env, s, cond, NUM_EPISODES)
             env.close()
             res.setdefault(cond, {})[key] = {
-                "successes": succ, "episodes": NUM_EPISODES,
+                "successes": succ,
+                "episodes": NUM_EPISODES,
                 "success_rate": succ / NUM_EPISODES,
-                "per_category": {c: {"successes": v[0], "episodes": v[1]}
-                                 for c, v in per_cat.items()},
-                "checkpoint": path}
+                "per_category": {
+                    c: {"successes": v[0], "episodes": v[1]} for c, v in per_cat.items()
+                },
+                "checkpoint": path,
+            }
             with open(RESULTS_FILE, "w") as f:
                 json.dump(res, f, indent=2)
-            print(f"  {cond:6s} | seed {s:4d}: {succ}/{NUM_EPISODES}  "
-                  + "  ".join(f"{c.split()[-1]}={v[0]}/{v[1]}"
-                              for c, v in per_cat.items() if v[1]))
+            print(
+                f"  {cond:6s} | seed {s:4d}: {succ}/{NUM_EPISODES}  "
+                + "  ".join(f"{c.split()[-1]}={v[0]}/{v[1]}" for c, v in per_cat.items() if v[1])
+            )
 
     summarise(res)
     print(f"\n  Saved -> {RESULTS_FILE}")

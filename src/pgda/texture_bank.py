@@ -1,12 +1,14 @@
 import os
 
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
+os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
 import torch
 from diffusers import StableDiffusionPipeline
 
+from pgda.paths import TEXTURE_BANK_DIR
+
 # Configuration
-TEXTURE_DIR = "assets/texture_bank"
+TEXTURE_DIR = str(TEXTURE_BANK_DIR)
 
 NUM_IMAGES_PER_PROMPT = 1000
 
@@ -14,7 +16,7 @@ NUM_IMAGES_PER_PROMPT = 1000
 PROMPTS = {
     "Heavy Rust": "A flat, high-resolution, seamless texture of heavy rusty iron, top-down view.",
     "Wet Ice": "A flat, high-resolution, seamless texture of smooth wet ice, top-down view.",
-    "Coarse Sandpaper": "A flat, high-resolution, seamless texture of coarse black sandpaper, top-down view."
+    "Coarse Sandpaper": "A flat, high-resolution, seamless texture of coarse black sandpaper, top-down view.",
 }
 
 
@@ -29,7 +31,7 @@ def generate_textures():
         "runwayml/stable-diffusion-v1-5",
         torch_dtype=torch.float32,
         safety_checker=None,
-        requires_safety_checker=False
+        requires_safety_checker=False,
     )
     pipe = pipe.to(device)
 
