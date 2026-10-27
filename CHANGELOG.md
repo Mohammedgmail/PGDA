@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2
+
+### CI
+- Removed the `apt-get` step: PyBullet runs headless (DIRECT mode) and no
+  installed module links against libGL or GLib, so the step only added a slow,
+  failure-prone network call.
+- Removed `docs/make_figures.py`, left behind when 0.1.1 was copied over the
+  repository (see 0.1.1, Removed).
+
 ## 0.1.1
 
 Fixes to the initial release. Simulation behaviour, defaults and the random-number

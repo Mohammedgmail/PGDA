@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pgda"
-version = "0.1.1"
+version = "0.1.2"
 description = "Physically-Grounded Diffusion Augmentation: Coupling diffusion-generated material textures to physical parameters for sim-to-real robotic manipulation"
 readme = "README.md"
 license = "MIT"
