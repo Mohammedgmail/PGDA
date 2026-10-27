@@ -27,7 +27,7 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgl1-mesa-glx libglib2.0-0
+          sudo apt-get install -y libgl1 libglib2.0-0
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -38,26 +38,3 @@ jobs:
           ruff check .
           ruff format --check .
       - run: pytest -q
-
-  # Optional: Run a quick training smoke test (commented out by default)
-  # smoke-test:
-  #   name: Training smoke test (1k steps)
-  #   runs-on: ubuntu-latest
-  #   continue-on-error: true
-  #   steps:
-  #     - uses: actions/checkout@v5
-  #     - uses: actions/setup-python@v6
-  #       with:
-  #         python-version: "3.12"
-  #     - run: python -m pip install -e ".[train]"
-  #     - run: |
-  #         cd src/pgda
-  #         python -c "
-  #         from pgda.env import UR3ePushingEnv
-  #         env = UR3ePushingEnv(randomization_mode='baseline')
-  #         obs, _ = env.reset()
-  #         for _ in range(10):
-  #             obs, _, _, _, _ = env.step(env.action_space.sample())
-  #         env.close()
-  #         print('Environment smoke test passed')
-  #         "
