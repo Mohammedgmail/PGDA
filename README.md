@@ -199,20 +199,6 @@ PGDA/
 
 ---
 
-## Citation
-
-```bibtex
-@article{alfandi2026pgda,
-  title   = {Used but Not Needed: Testing Whether Manipulation Policies Rely on Visual Material Cues in Domain Randomisation},
-  author  = {Alfandi, Mohammed and Wang, Shidong and Shao, Zhuang and Adhikari, Kabita},
-  journal = {Robotics and Autonomous Systems},
-  note    = {Submitted},
-  year    = {2026}
-}
-```
-
----
-
 ## License
 
 MIT License. See [LICENSE](LICENSE).
