@@ -6,7 +6,8 @@
 ![Stable-Baselines3](https://img.shields.io/badge/SB3-2.0+-4B5563)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-**Code for the paper:** *"Used but Not Needed: Testing Whether Manipulation Policies Rely on Visual Material Cues in Domain Randomisation"*, submitted to *Robotics and Autonomous Systems* (Elsevier).
+**Code for the paper:** *"Coupling Appearance and Physics in Domain Randomisation: Do
+Manipulation Policies Rely on Visual Material Cues?"*, submitted to *Robotics and Autonomous Systems* (Elsevier).
 
 ---
 
